@@ -1,6 +1,6 @@
 from flask import Flask, request, send_file, render_template_string
 import os, re
-from modules.parser import parse_user_input  # O parsea tú mismo desde request.form
+from modules.parser import parse_user_input
 from modules.content_builder import build_content
 from modules.image_generator import generate_images_from_chapters
 from modules.pdf_creator import create_pdf
@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'outputs'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Página de formulario
+# Página de formulario simple
 HTML_FORM = """
 <!doctype html>
 <title>Generador de Libros IA</title>
@@ -34,8 +34,10 @@ def index():
             "audience": request.form["audience"],
             "age_range": request.form["age_range"]
         }
-        # 1) Generar contenido
+
+        # 1) Generar contenido del libro
         texto = build_content(params)
+
         # 2) Limpiar marcadores y extraer capítulos
         texto = re.sub(r"\[Imagen sugerida:.*?\]", "", texto)
         chapters = []
@@ -47,14 +49,21 @@ def index():
             else:
                 curr.append(line)
         if curr: chapters.append("\n".join(curr))
+
         # 3) Generar imágenes
         images = generate_images_from_chapters(chapters)
-        # 4) Crear PDF
+
+        # 4) Crear PDF y enviar al usuario
         filename = f"{params['title'].replace(' ', '_')}.pdf"
         out_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        create_pdf(params, texto, images)  # ajusta este create_pdf para recibir out_path
+        create_pdf(params, texto, images, out_path)  # Nota: asegúrate de que pdf_creator reciba `out_path`
         return send_file(out_path, as_attachment=True)
+
     return render_template_string(HTML_FORM)
+
+# Para gunicorn en Render
+if __name__ != "__main__":
+    application = app  # esto puede ayudarte si usas `application` como nombre en vez de `app`
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
