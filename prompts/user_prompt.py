@@ -1,6 +1,20 @@
-def get_user_prompt():
-    title     = input("📘 Título del libro: ").strip()
-    target    = input("🎯 Público objetivo (niños, jóvenes, adultos): ").strip()
-    age_range = input("📅 Rango de edad (ej: 10-14): ").strip()
-    return {"title": title, "target": target, "age_range": age_range}
-
+def build_user_prompt(title: str, audience: str, age_range: str) -> str:
+    return (
+        f"Genera un libro educativo titulado '{title}', dirigido a {audience} de edades {age_range}.\n"
+        "El libro debe estar estructurado en las siguientes secciones: \n"
+        "1. Portada (con título, subtítulo, autor, ilustrador)\n"
+        "2. Índice\n"
+        "3. Introducción\n"
+        "4. 15 capítulos detallados y educativos\n"
+        "Cada capítulo debe incluir:\n"
+        "- Descripción general del animal o tema\n"
+        "- Hábitat\n"
+        "- Comportamiento\n"
+        "- Interacción con humanos\n"
+        "- ¿Sabías que...? (dato curioso o sorprendente)\n"
+        "5. Ejercicios de repaso con preguntas variadas\n"
+        "6. Conclusión final reflexiva\n"
+        "7. Bibliografía (inventada pero creíble)\n"
+        "Cada 3 capítulos, se debe sugerir una imagen contextual con formato: [Imagen sugerida: descripción].\n"
+        "El estilo debe ser amigable, educativo y narrativo."
+    )

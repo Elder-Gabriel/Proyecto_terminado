@@ -1,79 +1,96 @@
+import re
+import requests
+import tempfile
 from fpdf import FPDF
-import textwrap
-import unicodedata
 
-def clean_text(text):
-    return unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+class BookPDF(FPDF):
+    def __init__(self):
+        super().__init__()
+        self.set_auto_page_break(True, margin=20)
+        self.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+        self.add_font("DejaVu", "B", "DejaVuSans-Bold.ttf", uni=True)
 
+    def add_title_page(self, title: str):
+     self.add_page()
+     self.set_font("DejaVu", "B", 28)
+     self.set_y(60)
+     self.multi_cell(0, 20, title, align="C")
+    
+     self.ln(10)
+     self.set_font("DejaVu", "", 16)
+     self.multi_cell(0, 10, "Autor: Inteligencia Artificial (TEI)", align="C")
+     self.multi_cell(0, 10, "Ilustrador: Generado por DALL·E 3", align="C")
+ 
 
-def add_section(pdf, title, text, pages, lines_per_page=40):
-    """
-Insert a section with a title and text into a fixed number of pages.
-"""  
-    wrapper = textwrap.TextWrapper(width=90)
-    # prepare lines
-    paragraphs = text.split('\n')
-    lines = []
-    for para in paragraphs:
-        lines.extend(wrapper.wrap(clean_text(para)))
-        lines.append('')  # blank line
-    # split into pages
-    chunks = [lines[i:i+lines_per_page] for i in range(0, len(lines), lines_per_page)]
-    # ensure we have exactly 'pages' chunks
-    while len(chunks) < pages:
-        chunks.append([''] * lines_per_page)
-    chunks = chunks[:pages]
-    # add pages
-    for idx, chunk in enumerate(chunks):
-        pdf.add_page()
-        if idx == 0 and title:
-            pdf.set_font('Arial', 'B', 12)
-            pdf.cell(0, 10, clean_text(title), ln=True)
-            pdf.set_font('Arial', '', 12)
-        for line in chunk:
-            pdf.cell(0, 8, line, ln=True)
+    def add_section(self, heading: str, body: str):
+        self.add_page()
+        self.set_font("DejaVu", "B", 20)
+        self.multi_cell(0, 10, heading)
+        self.ln(5)
+        self.set_font("DejaVu", "", 14)
 
+        subsections = body.split("## ")
+        for subsection in subsections:
+            if not subsection.strip():
+                continue
+            lines = subsection.strip().split("\n", 1)
+            if len(lines) == 2:
+                subtitle, paragraph = lines
+                self.set_font("DejaVu", "B", 16)
+                self.multi_cell(0, 8, subtitle.strip())
+                self.set_font("DejaVu", "", 14)
+                self.multi_cell(0, 8, paragraph.strip())
+                self.ln(4)
+            else:
+                self.multi_cell(0, 8, subsection.strip())
+                self.ln(2)
 
-def create_pdf(title, content):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=False)
+    def add_image_page(self, url: str):
+        if not url:
+            return
+        try:
+            resp = requests.get(url)
+            resp.raise_for_status()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                tmp_file.write(resp.content)
+                tmp_path = tmp_file.name
+            self.add_page()
+            self.image(tmp_path, x=25, y=40, w=160, h=160)
+        except Exception as e:
+            print(f"⚠️ Error al insertar imagen: {e}")
 
-    # 1. Portada (1 page)
-    pdf.add_page()
-    pdf.set_font('Arial', 'B', 20)
-    pdf.cell(0, 12, clean_text(title), ln=True, align='C')
-    pdf.ln(20)
-    pdf.set_font('Arial', '', 14)
-    pdf.cell(0, 10, 'Libro generado por IA', ln=True, align='C')
+def create_pdf(params: dict, full_text: str, image_urls: list):
+    full_text = re.sub(r"\[Imagen sugerida:.*?\]", "", full_text)
 
-    # 2. Índice (1 page)
-    pdf.add_page()
-    pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, 'Índice', ln=True)
-    pdf.ln(5)
-    pdf.set_font('Arial', '', 12)
-    pdf.cell(0, 8, '1. Introducción', ln=True)
-    for i in range(10): pdf.cell(0, 8, f'{i+2}. Capítulo {i+1}', ln=True)
-    pdf.cell(0, 8, '12. Ejercicios', ln=True)
-    pdf.cell(0, 8, '13. Conclusión', ln=True)
-    pdf.cell(0, 8, '14. Bibliografía', ln=True)
+    pdf = BookPDF()
+    pdf.add_title_page(params.get("title", "Libro Educativo"))
 
-    # 3. Introducción (2 pages)
-    add_section(pdf, 'Introducción', content.get('introduccion',''), pages=2)
+    sections = full_text.split("\n## ")
+    chapter_blocks = []
+    block = ""
+    for section in sections:
+        if section.strip().lower().startswith("capítulo"):
+            if block:
+                chapter_blocks.append(block)
+            block = "## " + section.strip()
+        else:
+            block += "\n## " + section.strip()
+    if block:
+        chapter_blocks.append(block)
 
-    # 4. 10 capítulos (3 pages each)
-    for cap, text in content.get('capitulos', {}).items():
-        add_section(pdf, cap, text, pages=3)
+    image_index = 0
+    for i, chapter in enumerate(chapter_blocks):
+        section_title = chapter.split("\n", 1)[0].replace("##", "").strip()
+        content = chapter.split("\n", 1)[1] if "\n" in chapter else ""
+        pdf.add_section(section_title, content)
 
-    # 5. Ejercicios (3 pages)
-    add_section(pdf, 'Ejercicios', content.get('ejercicios',''), pages=3)
+        # 👇 Esta línea es la clave: imagen cada 3 capítulos
+        if (i + 1) % 3 == 0 and image_index < len(image_urls):
+            url = image_urls[image_index]
+            if url:
+                pdf.add_image_page(url)
+            image_index += 1
 
-    # 6. Conclusión (2 pages)
-    add_section(pdf, 'Conclusión', content.get('conclusion',''), pages=2)
-
-    # 7. Bibliografía (1 page)
-    add_section(pdf, 'Bibliografía', content.get('bibliografia',''), pages=1)
-
-    filename = f"{title.replace(' ','_')}_libro.pdf"
-    pdf.output(filename)
-    return filename
+    output_path = f"{params['title'].replace(' ', '_')}.pdf"
+    pdf.output(output_path)
+    print(f"✅ PDF guardado como: {output_path}")
